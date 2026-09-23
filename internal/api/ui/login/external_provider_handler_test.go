@@ -1,11 +1,12 @@
 package login
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/text/language"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
+	"golang.org/x/text/language"
 
 	"github.com/zitadel/zitadel/internal/domain"
 	"github.com/zitadel/zitadel/internal/idp"
@@ -187,6 +188,52 @@ func Test_mapExternalNotFoundOptionFormDataToLoginUser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := mapExternalNotFoundOptionFormDataToLoginUser(tt.args.formData, tt.args.linkingUser)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// Test_sessionParamsFromAuthRequest_loginHintPriority is a regression test for the
+// login_hint sent to an external IDP. UserName can have its domain suffix stripped by
+// mapExternalUserToLoginUser (when userLoginMustBeDomain is enabled), so it is no longer
+// a canonical identifier the external IDP can use as a login_hint (e.g. a UPN or email).
+// LoginName does not have this problem and must be preferred whenever both are set.
+func Test_sessionParamsFromAuthRequest_loginHintPriority(t *testing.T) {
+	l := &Login{}
+	tests := []struct {
+		name    string
+		authReq *domain.AuthRequest
+		want    []idp.Parameter
+	}{
+		{
+			"LoginName preferred over the (possibly domain-stripped) UserName",
+			&domain.AuthRequest{
+				AgentID:   "agent1",
+				UserName:  "john",
+				LoginName: "john@example.com",
+			},
+			[]idp.Parameter{idp.UserAgentID("agent1"), idp.LoginHintParam("john@example.com")},
+		},
+		{
+			"UserName used when LoginName is empty",
+			&domain.AuthRequest{
+				AgentID:  "agent1",
+				UserName: "john",
+			},
+			[]idp.Parameter{idp.UserAgentID("agent1"), idp.LoginHintParam("john")},
+		},
+		{
+			"LoginHint used when neither LoginName nor UserName are set",
+			&domain.AuthRequest{
+				AgentID:   "agent1",
+				LoginHint: "john@example.com",
+			},
+			[]idp.Parameter{idp.UserAgentID("agent1"), idp.LoginHintParam("john@example.com")},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := l.sessionParamsFromAuthRequest(context.Background(), tt.authReq, "")
 			assert.Equal(t, tt.want, got)
 		})
 	}

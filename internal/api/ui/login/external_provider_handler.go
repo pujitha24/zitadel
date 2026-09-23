@@ -1612,11 +1612,14 @@ func (l *Login) sessionParamsFromAuthRequest(ctx context.Context, authReq *domai
 			return append(params, idp.LoginHintParam(links.Links[0].ProvidedUsername))
 		}
 	}
-	if authReq.UserName != "" {
-		return append(params, idp.LoginHintParam(authReq.UserName))
-	}
+	// LoginName is checked before UserName, since UserName may have been stripped of its
+	// domain suffix (see mapExternalUserToLoginUser) and would no longer match what the
+	// external IDP expects as a login_hint (e.g. a UPN or email address).
 	if authReq.LoginName != "" {
 		return append(params, idp.LoginHintParam(authReq.LoginName))
+	}
+	if authReq.UserName != "" {
+		return append(params, idp.LoginHintParam(authReq.UserName))
 	}
 	if authReq.LoginHint != "" {
 		return append(params, idp.LoginHintParam(authReq.LoginHint))
