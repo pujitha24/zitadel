@@ -51,6 +51,12 @@ export function LoginPasskey({ loginName, sessionId, requestId, altPassword, org
             return;
           }
 
+          // Keep loading (and the submit button disabled) until the WebAuthn
+          // ceremony itself finishes, not just the challenge request. Cross-device
+          // ceremonies can stay open for 10-30s; without this, the submit button
+          // re-enables and a manual click issues a second challenge that overwrites
+          // the one the in-flight ceremony was signed against.
+          setLoading(true);
           return submitLoginAndContinue(pK)
             .catch((error) => {
               setError(error instanceof Error ? error.message : String(error));

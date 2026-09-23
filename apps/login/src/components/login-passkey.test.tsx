@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { LoginPasskey } from "./login-passkey";
 
 // Mock next/navigation
@@ -72,6 +72,8 @@ describe("LoginPasskey Component", () => {
     mockSendPasskey = vi.mocked(sendPasskey);
     mockUpdateSession = vi.mocked(updateOrCreateSession);
   });
+
+  afterEach(cleanup);
 
   describe("Initialization and Challenge Request", () => {
     test("should display error when challenge request fails", async () => {
@@ -412,6 +414,44 @@ describe("LoginPasskey Component", () => {
           }),
         );
       });
+    });
+  });
+
+  describe("Ceremony In Progress Guard", () => {
+    test("should keep submit button disabled while the WebAuthn ceremony is still pending", async () => {
+      const mockPublicKey = {
+        challenge: new Uint8Array([1, 2, 3]),
+        allowCredentials: [
+          {
+            id: new Uint8Array([4, 5, 6]),
+            type: "public-key",
+          },
+        ],
+      };
+
+      mockUpdateSession.mockResolvedValue({
+        challenges: {
+          webAuthN: {
+            publicKeyCredentialRequestOptions: {
+              publicKey: mockPublicKey,
+            },
+          },
+        },
+      });
+
+      // Simulate a long-running cross-device ceremony: navigator.credentials.get()
+      // never resolves during this test.
+      mockCredentialsGet.mockReturnValue(new Promise(() => {}));
+
+      renderWithIntl(<LoginPasskey loginName="test@example.com" altPassword={false} />);
+
+      await waitFor(() => {
+        expect(mockCredentialsGet).toHaveBeenCalledTimes(1);
+      });
+
+      expect(screen.getByTestId("submit-button")).toBeDisabled();
+      // A second challenge must not be requested while the first ceremony is in flight.
+      expect(mockUpdateSession).toHaveBeenCalledTimes(1);
     });
   });
 
